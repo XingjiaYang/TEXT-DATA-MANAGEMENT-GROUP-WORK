@@ -1,0 +1,346 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Yelp Review Search</title>
+<style>
+  :root {
+    --bg: #f6f7f9; --panel: #ffffff; --text: #1d2330; --muted: #667085; --line: #e3e6eb;
+    --accent: #c4302b; --accent-soft: #fde8e7; --mark: #fff1a8; --mark-text: #1d2330;
+    --star: #e8a317; --both: #1f7a4d; --both-soft: #e3f4ea; --chip: #eef1f5;
+    --shadow: 0 1px 2px rgba(16, 24, 40, .06);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #12151b; --panel: #1b1f27; --text: #e6e9ef; --muted: #9aa3b2; --line: #2c323d;
+      --accent: #ff6b63; --accent-soft: #3a1f1f; --mark: #6b5a12; --mark-text: #fff8d6;
+      --star: #f4b942; --both: #4cc38a; --both-soft: #183326; --chip: #262c36;
+      --shadow: none;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--text);
+    font: 15px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  }
+  .wrap { max-width: 1280px; margin: 0 auto; padding: 20px 16px 60px; }
+  .wrap.wide { max-width: 1640px; }
+  header { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; margin-bottom: 14px; }
+  h1 { font-size: 22px; margin: 0; letter-spacing: -.01em; }
+  h1 span { color: var(--accent); }
+  .stats { color: var(--muted); font-size: 13px; }
+
+  .panel {
+    background: var(--panel); border: 1px solid var(--line); border-radius: 12px;
+    padding: 14px; box-shadow: var(--shadow);
+  }
+  form.search { display: flex; gap: 8px; }
+  form.search input[type=search] {
+    flex: 1; min-width: 0; font: inherit; font-size: 16px; padding: 10px 12px;
+    border: 1px solid var(--line); border-radius: 8px; background: var(--bg); color: var(--text);
+  }
+  form.search input[type=search]:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
+  button {
+    font: inherit; cursor: pointer; border-radius: 8px; border: 1px solid var(--line);
+    background: var(--panel); color: var(--text); padding: 8px 12px;
+  }
+  button.primary { background: var(--accent); border-color: var(--accent); color: #fff; padding: 10px 18px; }
+  .controls { display: flex; flex-wrap: wrap; gap: 14px 22px; align-items: center; margin-top: 12px; }
+  .seg { display: inline-flex; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
+  .seg button { border: 0; border-radius: 0; padding: 6px 12px; }
+  .seg button + button { border-left: 1px solid var(--line); }
+  .seg button[aria-pressed=true] { background: var(--accent); color: #fff; }
+  label.ctl { display: inline-flex; align-items: center; gap: 8px; font-size: 14px; color: var(--muted); }
+  label.ctl output { color: var(--text); font-variant-numeric: tabular-nums; min-width: 2.6em; }
+  input[type=range] { accent-color: var(--accent); width: 140px; }
+  select { font: inherit; padding: 5px 8px; border-radius: 8px; border: 1px solid var(--line);
+           background: var(--panel); color: var(--text); }
+  .bm25-only[aria-disabled=true] { opacity: .4; pointer-events: none; }
+  .hint { color: var(--muted); font-size: 13px; margin-top: 10px; }
+  .hint code { background: var(--chip); padding: 1px 5px; border-radius: 4px; }
+
+  .summary { margin: 16px 2px 10px; display: flex; flex-wrap: wrap; gap: 6px 14px; align-items: center;
+             color: var(--muted); font-size: 14px; }
+  .summary b { color: var(--text); }
+  .chip { display: inline-block; background: var(--chip); border-radius: 999px; padding: 2px 9px;
+          font-size: 12.5px; color: var(--text); }
+  .chip small { color: var(--muted); }
+  .chip.warn { background: var(--accent-soft); }
+
+  .cols { display: grid; gap: 16px; }
+  .cols.two { grid-template-columns: 1fr 1fr; }
+  .cols.three { grid-template-columns: repeat(3, 1fr); }
+  @media (max-width: 1100px) { .cols.three { grid-template-columns: 1fr 1fr; } }
+  @media (max-width: 860px) { .cols.two, .cols.three { grid-template-columns: 1fr; } }
+  .col h2 { font-size: 15px; margin: 0 0 8px; display: flex; gap: 8px; align-items: baseline; flex-wrap: wrap; }
+  .col h2 small { color: var(--muted); font-weight: normal; }
+
+  .result { margin-bottom: 10px; }
+  .result.both { border-left: 3px solid var(--both); }
+  .rhead { display: flex; gap: 10px; align-items: baseline; flex-wrap: wrap; }
+  .rank { font-weight: 700; color: var(--accent); min-width: 2ch; }
+  .biz { font-weight: 600; }
+  .where, .meta { color: var(--muted); font-size: 13px; }
+  .score { margin-left: auto; font-variant-numeric: tabular-nums; font-size: 13px; color: var(--muted); }
+  .score b { color: var(--text); }
+  .meta { margin: 2px 0 6px; display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+  .stars { color: var(--star); letter-spacing: 1px; }
+  .badge { background: var(--both-soft); color: var(--both); border-radius: 999px; padding: 0 8px; font-size: 12px; }
+  .text { white-space: pre-line; overflow-wrap: anywhere; }
+  .text.clamp { display: -webkit-box; -webkit-line-clamp: 5; -webkit-box-orient: vertical; overflow: hidden; }
+  mark { background: var(--mark); color: var(--mark-text); border-radius: 3px; padding: 0 1px; }
+  .actions { display: flex; gap: 14px; margin-top: 6px; font-size: 13px; }
+  .link { background: none; border: 0; padding: 0; color: var(--accent); cursor: pointer; font-size: 13px; }
+  table.explain { border-collapse: collapse; margin-top: 8px; font-size: 13px; width: 100%; }
+  table.explain th, table.explain td { text-align: right; padding: 3px 8px; border-bottom: 1px solid var(--line);
+                                       font-variant-numeric: tabular-nums; }
+  table.explain th:first-child, table.explain td:first-child { text-align: left; }
+  table.explain th { color: var(--muted); font-weight: 500; }
+  .more { text-align: center; margin-top: 12px; }
+  .empty, .error { color: var(--muted); padding: 30px 0; text-align: center; }
+  .error { color: var(--accent); }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>Yelp <span>Review</span> Search</h1>
+    <div class="stats" id="stats">loading index…</div>
+  </header>
+
+  <div class="panel">
+    <form class="search" id="form">
+      <input type="search" id="q" placeholder='e.g. authentic carbonara   or   "happy hour" cheap drinks'
+             autocomplete="off" autofocus>
+      <button class="primary" type="submit">Search</button>
+    </form>
+    <div class="controls">
+      <div class="seg" role="group" aria-label="Ranking model" id="mode">
+        <button type="button" data-mode="bm25">BM25</button>
+        <button type="button" data-mode="tfidf">TF-IDF</button>
+        <button type="button" data-mode="es" hidden>Elasticsearch</button>
+        <button type="button" data-mode="compare">Compare</button>
+      </div>
+      <label class="ctl bm25-only">k1
+        <input type="range" id="k1" min="0" max="3" step="0.05" value="1.2">
+        <output id="k1v">1.20</output>
+      </label>
+      <label class="ctl bm25-only">b
+        <input type="range" id="b" min="0" max="1" step="0.05" value="0.75">
+        <output id="bv">0.75</output>
+      </label>
+      <button type="button" class="bm25-only" id="reset" title="k1 = 1.2, b = 0.75">Reset</button>
+      <label class="ctl">Top
+        <select id="k"><option>10</option><option>20</option><option>50</option></select>
+      </label>
+    </div>
+    <div class="hint">Any query word may match (OR). Wrap words in <code>"double quotes"</code> to require an exact phrase.
+      Moving k1 / b re-ranks our BM25 instantly<span id="es-hint" hidden>; Elasticsearch stays at its defaults
+      (k1 1.2, b 0.75, standard analyzer)</span>.</div>
+  </div>
+
+  <div class="summary" id="summary"></div>
+  <div id="results"></div>
+</div>
+
+<script>
+const $ = id => document.getElementById(id);
+const state = { q: "", mode: "bm25", k1: 1.2, b: 0.75, k: 10, offset: 0 };
+const NAMES = { bm25: "BM25", tfidf: "TF-IDF", es: "ES" };
+let esEnabled = false;
+let seq = 0;
+
+const esc = s => String(s).replace(/[&<>"']/g, c =>
+  ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+const fmt = n => n.toLocaleString("en-US");
+
+function highlight(text, words) {
+  if (!words.length) return esc(text);
+  const alt = words.map(w => w.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("|");
+  const re = new RegExp(`(?<![\\p{L}\\p{N}])(?:${alt})(?![\\p{L}\\p{N}])`, "giu");
+  let out = "", last = 0;
+  for (const m of text.matchAll(re)) {
+    out += esc(text.slice(last, m.index)) + "<mark>" + esc(m[0]) + "</mark>";
+    last = m.index + m[0].length;
+  }
+  return out + esc(text.slice(last));
+}
+
+function stars(n) { return "★".repeat(n) + "☆".repeat(5 - n); }
+
+function explainTable(r, model) {
+  const rows = r.explain.map(e => `<tr><td>${esc(e.term)}</td><td>${e.tf}</td><td>${fmt(e.df)}</td>
+    <td>${e.idf.toFixed(3)}</td><td>${e.contribution.toFixed(4)}</td></tr>`).join("");
+  const how = { bm25: "BM25", tfidf: "cosine", es: "Elasticsearch BM25 (length is Lucene's approximation)" }[model];
+  return `<table class="explain"><thead><tr><th>term</th><th>tf</th><th>df</th><th>idf</th>
+    <th>contribution</th></tr></thead><tbody>${rows}</tbody></table>
+    <div class="meta">doc length ${r.doc_len} terms · ${how} score ${r.score}</div>`;
+}
+
+// others: [[model, rank], ...] for the other columns that also returned this review
+function card(r, model, others = []) {
+  const both = others.length > 0;
+  const cats = r.categories ? r.categories.split(", ").slice(0, 4).join(" · ") : "";
+  return `<article class="panel result ${both ? "both" : ""}" data-doc="${r.doc_id}">
+    <div class="rhead">
+      <span class="rank">${r.rank}</span>
+      <span class="biz">${esc(r.business_name)}</span>
+      <span class="where">${esc(r.city)}, ${esc(r.state)}</span>
+      <span class="score">score <b>${r.score.toFixed(4)}</b></span>
+    </div>
+    <div class="meta">
+      <span class="stars" title="${r.stars} stars">${stars(r.stars)}</span>
+      <span>${esc(r.date.slice(0, 10))}</span>
+      <span>${r.doc_len} terms</span>
+      ${cats ? `<span>${esc(cats)}</span>` : ""}
+      ${both ? `<span class="badge">also ${others.map(([m, rk]) => `#${rk} in ${NAMES[m]}`).join(" · ")}</span>` : ""}
+    </div>
+    <div class="text clamp">${highlight(r.text, r.highlight)}</div>
+    <div class="actions">
+      <button type="button" class="link" data-act="expand">Show full review</button>
+      <button type="button" class="link" data-act="explain">Why this score?</button>
+    </div>
+    <div class="explain-box" hidden>${explainTable(r, model)}</div>
+  </article>`;
+}
+
+function termChips(res) {
+  const chips = res.terms.map(t => `<span class="chip">${esc(t.term)} <small>df ${fmt(t.df)}</small></span>`);
+  res.unknown_terms.forEach(t => chips.push(`<span class="chip warn">${esc(t)} <small>not in index</small></span>`));
+  res.phrases.forEach(p => chips.push(`<span class="chip">"${esc(p)}" <small>phrase</small></span>`));
+  return chips.join(" ");
+}
+
+function renderSingle(res, append) {
+  const box = $("results");
+  if (!append) {
+    $("summary").innerHTML = `<span><b>${fmt(res.total_hits)}</b> matching reviews</span>
+      <span>${res.took_ms} ms</span> ${termChips(res)}`;
+    box.innerHTML = res.results.length ? `<div class="col" id="list"></div>` :
+      `<div class="empty">No reviews match this query.</div>`;
+  }
+  const list = $("list");
+  if (!list) return;
+  list.insertAdjacentHTML("beforeend", res.results.map(r => card(r, res.model)).join(""));
+  box.querySelector(".more")?.remove();
+  if (state.offset + res.results.length < res.total_hits && state.offset + state.k < 1000) {
+    box.insertAdjacentHTML("beforeend", `<div class="more"><button type="button" id="more">Load more</button></div>`);
+  }
+}
+
+function renderCompare(res) {
+  const models = res.models;
+  const rankOf = Object.fromEntries(models.map(m =>
+    [m, Object.fromEntries(res[m].results.map(r => [r.doc_id, r.rank]))]));
+  const hits = models.map(m => `${NAMES[m]} <b>${fmt(res[m].total_hits)}</b>`).join(" · ");
+  const pairs = res.pairs.map(p => `${NAMES[p.a]}–${NAMES[p.b]} <b>${p.overlap}</b> (J ${p.jaccard})`).join(" · ");
+  const took = models.map(m => `${NAMES[m]} ${res[m].took_ms} ms`).join(" · ");
+  $("summary").innerHTML = `<span>matching reviews: ${hits}</span>
+    <span>overlap in top ${state.k}: ${pairs}</span><span>${took}</span> ${termChips(res.bm25)}`;
+  if (models.every(m => !res[m].results.length)) {
+    $("results").innerHTML = `<div class="empty">No reviews match this query.</div>`;
+    return;
+  }
+  const avgLen = list => list.results.length ?
+    Math.round(list.results.reduce((s, r) => s + (r.doc_len ?? 0), 0) / list.results.length) : 0;
+  const title = {
+    bm25: `BM25 (ours) <small>k1=${state.k1} b=${state.b} · avg length ${avgLen(res.bm25)} terms</small>`,
+    tfidf: `TF-IDF cosine (ours) <small>avg length ${avgLen(res.tfidf)} terms</small>`,
+    es: () => `Elasticsearch BM25 <small>standard analyzer · k1=1.2 b=0.75 · avg length ${avgLen(res.es)} tokens
+      · terms: ${res.es.terms.map(t => esc(t.term)).join(", ")}</small>`,
+  };
+  const col = m => `<div class="col"><h2>${typeof title[m] === "function" ? title[m]() : title[m]}</h2>
+    ${res[m].results.map(r => card(r, m, models.filter(o => o !== m && rankOf[o][r.doc_id])
+      .map(o => [o, rankOf[o][r.doc_id]]))).join("") || `<div class="empty">No results.</div>`}</div>`;
+  $("results").innerHTML = `<div class="cols ${models.length === 3 ? "three" : "two"}">${models.map(col).join("")}</div>`;
+}
+
+async function run(append = false) {
+  if (!state.q.trim()) return;
+  if (!append) state.offset = 0;
+  syncUrl();
+  const id = ++seq;
+  const p = new URLSearchParams({ q: state.q, k: state.k, k1: state.k1, b: state.b });
+  let url;
+  if (state.mode === "compare") url = `/api/compare?${p}`;
+  else { p.set("model", state.mode); p.set("offset", state.offset); url = `/api/search?${p}`; }
+  if (!append) $("summary").textContent = "searching…";
+  try {
+    const resp = await fetch(url);
+    if (!resp.ok) throw new Error(`${resp.status} ${await resp.text()}`);
+    const res = await resp.json();
+    if (id !== seq) return;  // a newer request superseded this one
+    state.mode === "compare" ? renderCompare(res) : renderSingle(res, append);
+  } catch (err) {
+    if (id !== seq) return;
+    $("summary").innerHTML = "";
+    $("results").innerHTML = `<div class="error">Search failed: ${esc(err.message)}</div>`;
+  }
+}
+
+function syncUrl() {
+  const p = new URLSearchParams({ q: state.q, mode: state.mode, k1: state.k1, b: state.b, k: state.k });
+  history.replaceState(null, "", `?${p}`);
+}
+
+function setMode(mode) {
+  state.mode = mode;
+  document.querySelectorAll("#mode button").forEach(b => b.setAttribute("aria-pressed", b.dataset.mode === mode));
+  document.querySelectorAll(".bm25-only").forEach(el =>
+    el.setAttribute("aria-disabled", mode === "tfidf" || mode === "es"));
+  document.querySelector(".wrap").classList.toggle("wide", mode === "compare" && esEnabled);
+}
+
+function setParam(name, value) {
+  state[name] = Number(value);
+  $(name).value = value;
+  $(name + "v").textContent = Number(value).toFixed(2);
+}
+
+let debounce;
+function rerunSoon() { clearTimeout(debounce); debounce = setTimeout(() => run(), 200); }
+
+$("form").addEventListener("submit", e => { e.preventDefault(); state.q = $("q").value; run(); });
+$("mode").addEventListener("click", e => {
+  const b = e.target.closest("button"); if (!b) return;
+  setMode(b.dataset.mode); run();
+});
+["k1", "b"].forEach(n => $(n).addEventListener("input", e => { setParam(n, e.target.value); rerunSoon(); }));
+$("reset").addEventListener("click", () => { setParam("k1", 1.2); setParam("b", 0.75); run(); });
+$("k").addEventListener("change", e => { state.k = Number(e.target.value); run(); });
+$("results").addEventListener("click", e => {
+  const btn = e.target.closest("button"); if (!btn) return;
+  if (btn.id === "more") { state.offset += state.k; run(true); return; }
+  const art = btn.closest(".result");
+  if (btn.dataset.act === "expand") {
+    const t = art.querySelector(".text");
+    btn.textContent = t.classList.toggle("clamp") ? "Show full review" : "Collapse";
+  } else if (btn.dataset.act === "explain") {
+    const box = art.querySelector(".explain-box");
+    box.hidden = !box.hidden;
+    btn.textContent = box.hidden ? "Why this score?" : "Hide score breakdown";
+  }
+});
+
+(async function init() {
+  try {
+    const s = await (await fetch("/api/stats")).json();
+    esEnabled = s.es_enabled;
+    $("stats").textContent = `${fmt(s.n_docs)} reviews · ${fmt(s.n_terms)} terms · avgdl ${s.avgdl}` +
+      (esEnabled ? " · Elasticsearch on" : "");
+  } catch { $("stats").textContent = ""; }
+  document.querySelector('#mode [data-mode="es"]').hidden = !esEnabled;
+  $("es-hint").hidden = !esEnabled;
+
+  const p = new URLSearchParams(location.search);
+  const modes = ["bm25", "tfidf", "compare"].concat(esEnabled ? ["es"] : []);
+  setMode(modes.includes(p.get("mode")) ? p.get("mode") : "bm25");
+  setParam("k1", p.get("k1") ?? 1.2);
+  setParam("b", p.get("b") ?? 0.75);
+  if (["10", "20", "50"].includes(p.get("k"))) { state.k = Number(p.get("k")); $("k").value = p.get("k"); }
+  if (p.get("q")) { state.q = $("q").value = p.get("q"); run(); }
+})();
+</script>
+</body>
+</html>

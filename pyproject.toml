@@ -1,0 +1,11 @@
+[project]
+name = "ai6122-yelp"
+version = "0.1.0"
+requires-python = ">=3.12"
+dependencies = [
+    "elasticsearch>=9.5,<10",
+    "fastapi>=0.162.0",
+    "nltk>=3.10.4",
+    "numpy>=2.5.4",
+    "uvicorn>=0.54.0",
+]
